@@ -8,6 +8,7 @@ class WdcCLI(cmd2.Cmd):
 
     def __init__(self):
         self.target = None
+        self.listen = False
 
         super().__init__()
 
@@ -20,6 +21,14 @@ class WdcCLI(cmd2.Cmd):
     def do_EOF(self):
         return True
 
+    def do_listen(self, arg):
+        self.listen = (arg != "stop")
+
+        if self.listen:
+            self.target.start_listener()
+        else:
+            self.target.stop_listener()
+
     def do_connect(self, arg):
         """Connect to serial port"""
         self.target = ZumoTarget("/dev/cu.usbserial-0001", 115200)
@@ -27,6 +36,9 @@ class WdcCLI(cmd2.Cmd):
     def do_dispatch(self, arg):
         if isinstance(self.target, ZumoTarget):
             self.target.dispatch(0, 0);
+    
+    def do_showlog(self, arg):
+        self.target.show_log()
 
     def do_disconnect(self, arg):
         """Disconnect"""
