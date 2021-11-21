@@ -21,11 +21,11 @@ class WdcCLI(cmd2.Cmd):
     def do_EOF(self):
         return True
 
-    def do_listen(self, arg):
-        self.listen = (arg != "stop")
+    def do_listen(self, args):
+        self.listen = (args != "stop")
 
         if self.listen:
-            self.target.start_listener()
+            self.target.start_listener((args == "live"))
         else:
             self.target.stop_listener()
 

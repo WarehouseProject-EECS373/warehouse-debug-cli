@@ -63,8 +63,8 @@ class ZumoTarget(Target):
     def dispatch(self, bay: int, aisle: int) -> None:
         self.sp.write(DISPATCH_MSG)
 
-    def start_listener(self):
-        super().start_listener()
+    def start_listener(self, live):
+        super().start_listener(live)
         self.captures = []
 
     def stop_listener(self):
@@ -91,4 +91,7 @@ class ZumoTarget(Target):
                 
             packet = DebugMessagePackets(ao_id, msg_id, is_queue, timestamp)
             self.captures.append(packet)
+
+            if self.live_log:
+                print(packet)
 

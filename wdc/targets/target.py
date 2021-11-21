@@ -5,11 +5,14 @@ class Target:
     def __init__(self):
         self.listener_thread = None
         self.listener_running = False
+        self.live_log = False
 
     def listen(self):
         pass
 
-    def start_listener(self):
+    def start_listener(self, live):
+        self.live_log = live
+
         if self.listener_thread is not None:
             self.stop_listener()
         
