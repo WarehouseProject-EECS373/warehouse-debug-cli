@@ -27,16 +27,19 @@ class MSG_ID(IntEnum):
     DRIVE_DISABLE = 0x11,
     DRIVE_ENABLE = 0x12,
     DRIVE_TIMED_ACTIVITY = 0x13,
+    DRIVE_BASE_VELOCITY = 0x14,
+    DRIVE_SETPOINT = 0x15,
     DRIVE_TIMED_TURN = 0x18,
     DRIVE_TIMED_TURN_DONE = 0x19,
-    DRIVE_OPEN_LOOP_CTL = 0x20,
-    DRIVE_PERIODIC_EVENT = 0x21,
+    DRIVE_OPEN_LOOP_CTL = 0x1A,
+    DRIVE_PERIODIC_EVENT = 0x1B,
     REFARR_CALIBRATE = 0x30,
     REFARR_PERIODIC_EVENT = 0x36,
     REFARR_START_LINE_FOLLOW = 0x37,
     REFARR_STOP_LINE_FOLLOW = 0x38,
     REFARR_INTERSECTION_COUNT_HIT = 0x39,
     PUSH_BUTTON_PRESSED = 0x61,
+    LIMIT_SWITCH_HIT = 0x62,
     UART_SMALL_PACKET = 0x81,
     UART_LARGE_PACKET = 0x82,
     OS_DEBUG_MSG = 0x83,
@@ -44,7 +47,7 @@ class MSG_ID(IntEnum):
     SM_DISPATCH_FROM_IDLE = 0x110,
     SM_CALIBRATE_DONE = 0x120,
 
-
+FILTERED = [MSG_ID.HEARTBEAT_MSG]
 
 class DebugMessagePackets:
     def __init__(self, ao_id, msg_id, is_queue, timestamp):
@@ -93,7 +96,10 @@ class ZumoTarget(Target):
             timestamp = datetime.datetime.now().time()
 
             _, ao_id, is_queue, msg_id, _ = struct.unpack("<BB?IB", payload)
-                
+            
+            if MSG_ID(msg_id) in FILTERED:
+                continue
+
             packet = DebugMessagePackets(ao_id, msg_id, is_queue, timestamp)
             self.captures.append(packet)
 
