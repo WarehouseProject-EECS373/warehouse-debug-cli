@@ -6,8 +6,21 @@ from enum import IntEnum
 from wdc.targets.target import Target
 
 DISPATCH_MSG_ID = 0x1
-DEBUG_PACKET_MSG_ID = 0x2
-DEBUG_PACKET_PAYLOAD_SIZE = 6
+
+OS_TRACE_MSG_ID = 0x2
+OS_TRACE_EXPECTED_SIZE = 8
+
+
+DRIVE_CTL_TRACE_MSG_ID = 0x3
+DRIVE_CTL_EXPECTED_SIZE = 18
+
+DRIVE_CTL_TRACE_INIT_MSG_ID = 0x4
+DRIVE_CTL_INIT_EXPECTED_SIZE = 6
+
+LINE_FOLLOW_MSG_ID = 0x5
+LINE_FOLLOW_EXPECTED_SIZE = 14
+
+END_CHAR = b"\x5A"
 
 DISPATCH_MSG = bytearray([DISPATCH_MSG_ID, 0, 0])
 
@@ -47,7 +60,33 @@ class MSG_ID(IntEnum):
     SM_DISPATCH_FROM_IDLE = 0x110,
     SM_CALIBRATE_DONE = 0x120,
 
-FILTERED = [MSG_ID.HEARTBEAT_MSG]
+class DriveCtlInitPacket:
+    def __init__(self, sp, timestamp):
+        self.setpoint = sp
+        self.timestamp = timestamp
+
+    def __repr__(self):
+        return "[" + str(self.timestamp.time()) + "]: " + str(self.setpoint)
+
+class DriveCtlTracePacket:
+    def __init__(self, left_out, right_out, error, actual, timestamp):
+        self.left_out = left_out
+        self.right_out = right_out
+        self.error = error
+        self.actual = actual
+        self.timestamp = timestamp
+
+    def __repr__(self):
+        return "[" + str(self.timestamp.time()) + "]: " + str(self.left_out) + " " + str(self.right_out) + " " + str(self.error) + " " + str(self.actual)
+
+class LineFollowTracePacket:
+    def __init__(self, readings, timestamp):
+        self.readings = readings
+        self.timestamp = timestamp
+    
+    def __repr__(self):
+        readings_str = [str(i) for i in self.readings]
+        return "[" + str(self.timestamp.time()) + "]: " + ",".join(readings_str)
 
 class DebugMessagePackets:
     def __init__(self, ao_id, msg_id, is_queue, timestamp):
@@ -59,50 +98,120 @@ class DebugMessagePackets:
     def __repr__(self):
         operation = "queued to" if self.is_queue else "handled by"
 
-        return "[" + str(self.timestamp) + "]: " + MSG_ID(self.msg_id).name + " " + operation + " " + AO_ID(self.ao_id).name
+        return "[" + str(self.timestamp.time()) + "]: " + MSG_ID(self.msg_id).name + " " + operation + " " + AO_ID(self.ao_id).name
 
 class ZumoTarget(Target):
 
-    def __init__(self, port: str, baud):
+    def __init__(self, port: str, baud, filtered=None):
         self.sp = serial.Serial(port, int(baud))
-        self.captures = []
+
+        if filtered is not None:
+            self.filtered = filtered
+        else:
+            self.filtered = []
+
         super().__init__()
+
+    def get_drive_ctl_data(self):
+        ctl_times = []
+        left_outs = []
+        right_outs = []
+        errors = []
+        actuals = []
+
+        sp_times = []
+        setpoints = []
+
+
+        for c in self.captures:
+            if isinstance(c, DriveCtlInitPacket):
+                setpoints.append(c.setpoint)
+                sp_times.append(c.timestamp)
+
+            if isinstance(c, DriveCtlTracePacket):
+                ctl_times.append(c.timestamp)
+                left_outs.append(c.left_out)
+                right_outs.append(c.right_out)
+                errors.append(c.error)
+                actuals.append(c.actual)
+
+        return {"timestamps": ctl_times, "left_percent_out": left_outs, "right_percent_out": right_outs, "errors": errors, "actual": actuals, "sp_times": sp_times, "setpoints": setpoints}
 
     def dispatch(self, bay: int, aisle: int) -> None:
         self.sp.write(DISPATCH_MSG)
 
-    def start_listener(self, live):
+    def start_listener(self, live=False):
         super().start_listener(live)
-        self.captures = []
 
     def stop_listener(self):
         super().stop_listener()
     
-    def show_log(self):
-        for c in self.captures:
-            print(c)
-
     def listen(self):
-        print("Starting listener")
         self.sp.reset_input_buffer()
         
         while self.listener_running:
-            payload = self.sp.read_until(b"\x5A")
-
-            if len(payload) != 8:
-                self.sp.reset_input_buffer()
-                continue
-
-            timestamp = datetime.datetime.now().time()
-
-            _, ao_id, is_queue, msg_id, _ = struct.unpack("<BB?IB", payload)
+            packet = self.sp.read_until(END_CHAR)
+            timestamp = datetime.datetime.now()
             
-            if MSG_ID(msg_id) in FILTERED:
-                continue
+            if packet[0] == DRIVE_CTL_TRACE_MSG_ID:
+                o = self._handle_drive_ctl_msg(packet, timestamp)
+            elif packet[0] == DRIVE_CTL_TRACE_INIT_MSG_ID:
+                o = self._handle_drive_ctl_init_msg(packet, timestamp)
+            elif packet[0] == LINE_FOLLOW_MSG_ID:
+                o = self._handle_line_follow_trace_msg(packet, timestamp)
+            elif packet[0] == OS_TRACE_MSG_ID:
+                o = self._handle_trace_msg(packet, timestamp)
 
-            packet = DebugMessagePackets(ao_id, msg_id, is_queue, timestamp)
-            self.captures.append(packet)
 
             if self.live_log:
-                print(packet)
+                print(o)
+    
+    def _handle_drive_ctl_msg(self, packet, timestamp):
+        if len(packet) != DRIVE_CTL_EXPECTED_SIZE:
+            return None
+
+        _, lo, ro, error, actual, _ = struct.unpack("<BffffB", packet)
+
+        cp = DriveCtlTracePacket(lo, ro, error, actual, timestamp)
+        self.captures.append(cp)
+
+        return cp
+
+    def _handle_drive_ctl_init_msg(self, packet, timestamp):
+        if len(packet) != DRIVE_CTL_INIT_EXPECTED_SIZE:
+            return None
+
+        _, sp, _ = struct.unpack("<BfB", packet)
+
+        initp = DriveCtlInitPacket(sp, timestamp)
+        self.captures.append(initp)
+
+
+    def _handle_line_follow_trace_msg(self, packet, timestamp):
+        if len(packet) != LINE_FOLLOW_EXPECTED_SIZE:
+            self.sp.reset_input_buffer()
+            return None
+
+        _, s0, s1, s2, s3, s4, s5, _ = struct.unpack("<BhhhhhhB", packet)
+
+        lfp = LineFollowTracePacket([s0, s1, s2, s3, s4, s5], timestamp)
+        self.captures.append(lfp)
+
+        return lfp
+
+
+    def _handle_trace_msg(self, packet, timestamp):
+        if len(packet) != OS_TRACE_EXPECTED_SIZE:
+            self.sp.reset_input_buffer()
+            return None
+
+        _, ao_id, is_queue, msg_id, _ = struct.unpack("<BB?IB", packet)
+            
+        if MSG_ID(msg_id) in self.filtered:
+            return None
+
+        dp = DebugMessagePackets(ao_id, msg_id, is_queue, timestamp)
+        self.captures.append(dp)
+
+        return dp
 

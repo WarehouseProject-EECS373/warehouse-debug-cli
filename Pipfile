@@ -10,6 +10,8 @@ pyserial = "*"
 [dev-packages]
 pynvim = "*"
 python-language-server = "*"
+jupyterlab = "*"
+matplotlib = "*"
 
 [requires]
 python_version = "3.9"

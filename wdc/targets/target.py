@@ -3,6 +3,7 @@ import threading
 
 class Target:
     def __init__(self):
+        self.captures = []
         self.listener_thread = None
         self.listener_running = False
         self.live_log = False
@@ -10,7 +11,7 @@ class Target:
     def listen(self):
         pass
 
-    def start_listener(self, live):
+    def start_listener(self, live=False):
         self.live_log = live
 
         if self.listener_thread is not None:
@@ -26,4 +27,8 @@ class Target:
         self.listener_thread = None
 
     def show_log(self):
-        pass
+        for c in self.captures:
+            print(c)
+    
+    def reset_log(self):
+        self.captures.clear()

@@ -1,6 +1,6 @@
 import cmd2
 
-from wdc.targets.zumo import ZumoTarget
+from wdc.targets.zumo import ZumoTarget, MSG_ID
 
 
 class WdcCLI(cmd2.Cmd):
@@ -31,14 +31,19 @@ class WdcCLI(cmd2.Cmd):
 
     def do_connect(self, arg):
         """Connect to serial port"""
-        self.target = ZumoTarget("/dev/cu.usbserial-0001", 115200)
+        self.target = ZumoTarget("/dev/cu.usbserial-0001", 115200, [MSG_ID.HEARTBEAT_MSG])
 
     def do_dispatch(self, arg):
         if isinstance(self.target, ZumoTarget):
             self.target.dispatch(0, 0);
     
     def do_showlog(self, arg):
-        self.target.show_log()
+        if self.target is not None:
+            self.target.show_log()
+
+    def do_resetlog(self, arg):
+        if self.target is not None:
+            self.target.reset_log()
 
     def do_disconnect(self, arg):
         """Disconnect"""
