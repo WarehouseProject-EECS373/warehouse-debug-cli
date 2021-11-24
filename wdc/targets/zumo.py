@@ -48,6 +48,7 @@ class PROPERTY_ID(IntEnum):
     DRIVE_BASE_OUTPUT = 0x5,
     DRIVE_STATE = 0x6,
     DRIVE_SETPOINT = 0x7
+    DRIVE_ACTUAL = 0x8
 
 class AO_ID(IntEnum):
     WATCHDOG = 0x0,
@@ -136,6 +137,28 @@ class ZumoTarget(Target):
             self.filtered = []
 
         super().__init__()
+
+    def set_pid(self, p, i, d):
+        self.set_property(PROPERTY_ID.DRIVE_kP, PTYPE.FLOAT, p)
+        self.set_property(PROPERTY_ID.DRIVE_kI, PTYPE.FLOAT, i)
+        self.set_property(PROPERTY_ID.DRIVE_kD, PTYPE.FLOAT, d)
+
+    def get_pid(self):
+        pid = {}
+        pid["p"] = self.get_property(PROPERTY_ID.DRIVE_kP, PTYPE.FLOAT)
+        pid["i"] = self.get_property(PROPERTY_ID.DRIVE_kI, PTYPE.FLOAT)
+        pid["d"] = self.get_property(PROPERTY_ID.DRIVE_kD, PTYPE.FLOAT)
+
+        return pid
+
+    def drive_enable(self):
+        self.set_property(PROPERTY_ID.DRIVE_STATE, PTYPE.U32, 1)
+
+    def drive_disable(self):
+        self.set_property(PROPERTY_ID.DRIVE_STATE, PTYPE.U32, 0)
+
+    def drive_set_setpoint(self, sp):
+        self.set_property(PROPERTY_ID.DRIVE_SETPOINT, PTYPE.FLOAT, sp)
 
     def read(self):
         raw = self.sp.read_until(FOOTER)
