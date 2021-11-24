@@ -7,5 +7,5 @@ setup(
     author="Roberts Kalnins",
     author_email="rkalnins@umich.edu",
     url="www.github.com/",
-    packages=["wdc", "wdc.cli"], 
+    packages=["wdc", "wdc.cli", "wdc.targets", "pystcp"], 
 )

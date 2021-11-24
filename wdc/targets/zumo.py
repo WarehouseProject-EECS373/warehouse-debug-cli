@@ -1,28 +1,53 @@
 import serial
 import struct
 import datetime
-from enum import IntEnum
+from enum import Enum, IntEnum
 
 from wdc.targets.target import Target
+from pystcp import Status, EngineState, StcpEngine
+
 
 DISPATCH_MSG_ID = 0x1
+SET_P_MSG_ID = 0x20
+GET_P_MSG_ID = 0x10
+GET_P_RESPONSE_MSG_ID = 0x11
+EXPECTED_GET_P_RESPONSE_SIZE = 5
 
 OS_TRACE_MSG_ID = 0x2
-OS_TRACE_EXPECTED_SIZE = 8
-
+OS_TRACE_EXPECTED_SIZE = 7
 
 DRIVE_CTL_TRACE_MSG_ID = 0x3
-DRIVE_CTL_EXPECTED_SIZE = 18
+DRIVE_CTL_EXPECTED_SIZE = 17
 
 DRIVE_CTL_TRACE_INIT_MSG_ID = 0x4
-DRIVE_CTL_INIT_EXPECTED_SIZE = 6
+DRIVE_CTL_INIT_EXPECTED_SIZE = 5
 
 LINE_FOLLOW_MSG_ID = 0x5
-LINE_FOLLOW_EXPECTED_SIZE = 14
+LINE_FOLLOW_EXPECTED_SIZE = 13
 
-END_CHAR = b"\x5A"
 
-DISPATCH_MSG = bytearray([DISPATCH_MSG_ID, 0, 0])
+FOOTER = b"\x7F\x7F"
+
+class PTYPE(IntEnum):
+    FLOAT = 0,
+    BOOL = 1,
+    U8 = 2,
+    I8 = 3,
+    U16 = 4,
+    I16 = 5,
+    U32 = 6,
+    I32 = 7,
+
+
+class PROPERTY_ID(IntEnum):
+    DRIVE_DEADBAND = 0x0,
+    DRIVE_CTL_LOOP_PERIOD = 0x1,
+    DRIVE_kP = 0x2,
+    DRIVE_kI = 0x3,
+    DRIVE_kD = 0x4,
+    DRIVE_BASE_OUTPUT = 0x5,
+    DRIVE_STATE = 0x6,
+    DRIVE_SETPOINT = 0x7
 
 class AO_ID(IntEnum):
     WATCHDOG = 0x0,
@@ -104,13 +129,20 @@ class ZumoTarget(Target):
 
     def __init__(self, port: str, baud, filtered=None):
         self.sp = serial.Serial(port, int(baud))
-
+        self.stcp = StcpEngine(self.write)
         if filtered is not None:
             self.filtered = filtered
         else:
             self.filtered = []
 
         super().__init__()
+
+    def read(self):
+        raw = self.sp.read_until(FOOTER)
+        return self.stcp.handle_message(raw)
+
+    def write(self, msg):
+        self.sp.write(msg)
 
     def get_drive_ctl_data(self):
         ctl_times = []
@@ -138,7 +170,55 @@ class ZumoTarget(Target):
         return {"timestamps": ctl_times, "left_percent_out": left_outs, "right_percent_out": right_outs, "errors": errors, "actual": actuals, "sp_times": sp_times, "setpoints": setpoints}
 
     def dispatch(self, bay: int, aisle: int) -> None:
-        self.sp.write(DISPATCH_MSG)
+        self.stcp.write(struct.pack("<BBB", DISPATCH_MSG_ID, 0, 0))
+
+    def get_property(self, pid, ptype):
+        self.sp.reset_input_buffer()
+        get_msg = struct.pack("<BH", GET_P_MSG_ID, pid)
+        self.stcp.write(get_msg)
+        packet = self.read()
+        if len(packet) != EXPECTED_GET_P_RESPONSE_SIZE:
+            return
+        
+        if ptype == PTYPE.FLOAT:
+            _, v = struct.unpack("<Bf", packet)
+        elif ptype == PTYPE.BOOL:
+            _, v = struct.unpack("<B?xxx", packet)
+        elif ptype == PTYPE.U8:
+            _, v = struct.unpack("<BBxxx", packet)
+        elif ptype == PTYPE.I8:
+            _, v = struct.unpack("<Bbxxx", packet)
+        elif ptype == PTYPE.U16:
+            _, v = struct.unpack("<BHxx", packet)
+        elif ptype == PTYPE.I16:
+            _, v = struct.unpack("<Bhxx", packet)
+        elif ptype == PTYPE.U32:
+            _, v = struct.unpack("<BI", packet)
+        elif ptype == PTYPE.I32:
+            _, v = struct.unpack("<Bi", packet)
+    
+        return v
+
+    def set_property(self, pid, ptype, value):
+        if ptype == PTYPE.FLOAT:
+            set_msg = struct.pack("<BHf", SET_P_MSG_ID, pid, value)
+        elif ptype == PTYPE.BOOL:
+            set_msg = struct.pack("<BH?xxx", SET_P_MSG_ID, pid, value)
+        elif ptype == PTYPE.U8:
+            set_msg = struct.pack("<BHBxxx", SET_P_MSG_ID, pid, value)
+        elif ptype == PTYPE.I8:
+            set_msg = struct.pack("<BHbxxx", SET_P_MSG_ID, pid, value)
+        elif ptype == PTYPE.U16:
+            set_msg = struct.pack("<BHHxx", SET_P_MSG_ID, pid, value)
+        elif ptype == PTYPE.I16:
+            set_msg = struct.pack("<BHhxx", SET_P_MSG_ID, pid, value)
+        elif ptype == PTYPE.U32:
+            set_msg = struct.pack("<BHI", SET_P_MSG_ID, pid, value)
+        elif ptype == PTYPE.I32:
+            set_msg = struct.pack("<BHi", SET_P_MSG_ID, pid, value)
+
+        self.stcp.write(set_msg)
+        
 
     def start_listener(self, live=False):
         super().start_listener(live)
@@ -150,7 +230,7 @@ class ZumoTarget(Target):
         self.sp.reset_input_buffer()
         
         while self.listener_running:
-            packet = self.sp.read_until(END_CHAR)
+            packet = self.read()
             timestamp = datetime.datetime.now()
             
             if packet[0] == DRIVE_CTL_TRACE_MSG_ID:
@@ -162,7 +242,6 @@ class ZumoTarget(Target):
             elif packet[0] == OS_TRACE_MSG_ID:
                 o = self._handle_trace_msg(packet, timestamp)
 
-
             if self.live_log:
                 print(o)
     
@@ -170,9 +249,10 @@ class ZumoTarget(Target):
         if len(packet) != DRIVE_CTL_EXPECTED_SIZE:
             return None
 
-        _, lo, ro, error, actual, _ = struct.unpack("<BffffB", packet)
+        _, lo, ro, error, actual  = struct.unpack("<Bffff", packet)
 
         cp = DriveCtlTracePacket(lo, ro, error, actual, timestamp)
+
         self.captures.append(cp)
 
         return cp
@@ -181,7 +261,7 @@ class ZumoTarget(Target):
         if len(packet) != DRIVE_CTL_INIT_EXPECTED_SIZE:
             return None
 
-        _, sp, _ = struct.unpack("<BfB", packet)
+        _, sp = struct.unpack("<Bf", packet)
 
         initp = DriveCtlInitPacket(sp, timestamp)
         self.captures.append(initp)
@@ -192,7 +272,7 @@ class ZumoTarget(Target):
             self.sp.reset_input_buffer()
             return None
 
-        _, s0, s1, s2, s3, s4, s5, _ = struct.unpack("<BhhhhhhB", packet)
+        _, s0, s1, s2, s3, s4, s5 = struct.unpack("<BHHHHHH", packet)
 
         lfp = LineFollowTracePacket([s0, s1, s2, s3, s4, s5], timestamp)
         self.captures.append(lfp)
@@ -205,7 +285,7 @@ class ZumoTarget(Target):
             self.sp.reset_input_buffer()
             return None
 
-        _, ao_id, is_queue, msg_id, _ = struct.unpack("<BB?IB", packet)
+        _, ao_id, is_queue, msg_id = struct.unpack("<BB?I", packet)
             
         if MSG_ID(msg_id) in self.filtered:
             return None
