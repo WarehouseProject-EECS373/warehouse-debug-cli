@@ -77,6 +77,7 @@ class MSG_ID(IntEnum):
     REFARR_START_LINE_FOLLOW = 0x37,
     REFARR_STOP_LINE_FOLLOW = 0x38,
     REFARR_INTERSECTION_COUNT_HIT = 0x39,
+    REFARR_PROCESS_READING = 0x3A,
     PUSH_BUTTON_PRESSED = 0x61,
     LIMIT_SWITCH_HIT = 0x62,
     UART_SMALL_PACKET = 0x81,
@@ -85,6 +86,8 @@ class MSG_ID(IntEnum):
     SM_PERIODIC_EVENT = 0x100,
     SM_DISPATCH_FROM_IDLE = 0x110,
     SM_CALIBRATE_DONE = 0x120,
+    GET_PROPERTY = 0x220,
+    SET_PROPERTY = 0x221,
 
 class DriveCtlInitPacket:
     def __init__(self, sp, timestamp):
