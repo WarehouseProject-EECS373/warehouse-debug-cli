@@ -8,6 +8,9 @@ from pystcp import Status, EngineState, StcpEngine
 
 
 DISPATCH_MSG_ID = 0x1
+
+START_LINE_FOLLOW_MSG_ID = 0xD
+
 SET_P_MSG_ID = 0x20
 GET_P_MSG_ID = 0x10
 GET_P_RESPONSE_MSG_ID = 0x11
@@ -196,7 +199,10 @@ class ZumoTarget(Target):
         return {"timestamps": ctl_times, "left_percent_out": left_outs, "right_percent_out": right_outs, "errors": errors, "actual": actuals, "sp_times": sp_times, "setpoints": setpoints}
 
     def dispatch(self, bay: int, aisle: int) -> None:
-        self.stcp.write(struct.pack("<BBB", DISPATCH_MSG_ID, 0, 0))
+        self.stcp.write(struct.pack("<BBB", DISPATCH_MSG_ID, aisle, bay))
+
+    def start_line_follow(self, count: int) -> None:
+        self.stcp.write(struct.pack("<BB", START_LINE_FOLLOW_MSG_ID, count))
 
     def get_property(self, pid, ptype):
         self.sp.reset_input_buffer()

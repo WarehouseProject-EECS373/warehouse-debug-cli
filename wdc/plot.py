@@ -10,8 +10,8 @@ def plot_drive_ctl_data(data):
 
     host.set_xlabel("time(s)")
     host.set_ylim(-1.0, 1.0)
-    ax_actual.set_ylim(0, 3000)
-    ax_error.set_ylim(-2000, 2000)
+    ax_actual.set_ylim(0, 5000)
+    ax_error.set_ylim(-2500, 2500)
 
     host.set_ylabel("percent output", color="tab:red")
     ax_error.set_ylabel("error", color="tab:green")
