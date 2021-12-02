@@ -201,8 +201,8 @@ class ZumoTarget(Target):
     def dispatch(self, bay: int, aisle: int) -> None:
         self.stcp.write(struct.pack("<BBB", DISPATCH_MSG_ID, aisle, bay))
 
-    def start_line_follow(self, count: int) -> None:
-        self.stcp.write(struct.pack("<BB", START_LINE_FOLLOW_MSG_ID, count))
+    def start_line_follow(self, count: int, base_velocity: float) -> None:
+        self.stcp.write(struct.pack("<BBf", START_LINE_FOLLOW_MSG_ID, count, base_velocity))
 
     def get_property(self, pid, ptype):
         self.sp.reset_input_buffer()
@@ -256,6 +256,7 @@ class ZumoTarget(Target):
         super().start_listener(live)
 
     def stop_listener(self):
+        self.sp.cancel_read()
         super().stop_listener()
     
     def listen(self):
@@ -264,6 +265,9 @@ class ZumoTarget(Target):
         while self.listener_running:
             packet = self.read()
             timestamp = datetime.datetime.now()
+
+            if len(packet) == 0:
+                continue
             
             if packet[0] == DRIVE_CTL_TRACE_MSG_ID:
                 o = self._handle_drive_ctl_msg(packet, timestamp)
