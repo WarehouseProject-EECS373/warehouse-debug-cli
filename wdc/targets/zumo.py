@@ -52,6 +52,7 @@ class PROPERTY_ID(IntEnum):
     DRIVE_STATE = 0x6,
     DRIVE_SETPOINT = 0x7
     DRIVE_ACTUAL = 0x8
+    DRIVE_I_ZONE = 0x9
 
 class AO_ID(IntEnum):
     WATCHDOG = 0x0,
@@ -59,7 +60,8 @@ class AO_ID(IntEnum):
     INPUT_CTL = 0x2,
     COMMS = 0x3,
     STATE = 0x4,
-    REFARR = 0x5
+    REFARR = 0x5,
+    TEST = 0x6,
 
 class MSG_ID(IntEnum):
     DATA_MSG_ID = 0x0,
@@ -144,16 +146,19 @@ class ZumoTarget(Target):
 
         super().__init__()
 
-    def set_pid(self, p, i, d):
+    def set_pid(self, p, i, d, izone=None):
         self.set_property(PROPERTY_ID.DRIVE_kP, PTYPE.FLOAT, p)
         self.set_property(PROPERTY_ID.DRIVE_kI, PTYPE.FLOAT, i)
         self.set_property(PROPERTY_ID.DRIVE_kD, PTYPE.FLOAT, d)
+        if izone is not None:
+            self.set_property(PROPERTY_ID.DRIVE_I_ZONE, PTYPE.FLOAT, izone);
 
     def get_pid(self):
         pid = {}
         pid["p"] = self.get_property(PROPERTY_ID.DRIVE_kP, PTYPE.FLOAT)
         pid["i"] = self.get_property(PROPERTY_ID.DRIVE_kI, PTYPE.FLOAT)
         pid["d"] = self.get_property(PROPERTY_ID.DRIVE_kD, PTYPE.FLOAT)
+        pid["izone"] = self.get_property(PROPERTY_ID.DRIVE_I_ZONE, PTYPE.FLOAT)
 
         return pid
 
@@ -201,8 +206,8 @@ class ZumoTarget(Target):
     def dispatch(self, bay: int, aisle: int) -> None:
         self.stcp.write(struct.pack("<BBB", DISPATCH_MSG_ID, aisle, bay))
 
-    def start_line_follow(self, count: int, base_velocity: float) -> None:
-        self.stcp.write(struct.pack("<BBf", START_LINE_FOLLOW_MSG_ID, count, base_velocity))
+    def start_line_follow(self, count: int, left_out=0.0, right_out=0.0, mode=0x13, base_velocity=0.0) -> None:
+        self.stcp.write(struct.pack("<BBBfff", START_LINE_FOLLOW_MSG_ID, count, mode, base_velocity, left_out, right_out))
 
     def get_property(self, pid, ptype):
         self.sp.reset_input_buffer()
