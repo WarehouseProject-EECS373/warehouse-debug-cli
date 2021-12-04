@@ -10,6 +10,8 @@ from pystcp import Status, EngineState, StcpEngine
 DISPATCH_MSG_ID = 0x1
 
 START_LINE_FOLLOW_MSG_ID = 0xD
+START_LF_TURN_MSG_ID =  0xE
+START_180_TURN_MSG_ID = 0xF
 
 SET_P_MSG_ID = 0x20
 GET_P_MSG_ID = 0x10
@@ -206,8 +208,14 @@ class ZumoTarget(Target):
     def dispatch(self, bay: int, aisle: int) -> None:
         self.stcp.write(struct.pack("<BBB", DISPATCH_MSG_ID, aisle, bay))
 
-    def start_line_follow(self, count: int, left_out=0.0, right_out=0.0, mode=0x13, base_velocity=0.0) -> None:
-        self.stcp.write(struct.pack("<BBBfff", START_LINE_FOLLOW_MSG_ID, count, mode, base_velocity, left_out, right_out))
+    def start_line_follow(self, count: int, base_velocity: float) -> None:
+        self.stcp.write(struct.pack("<BBf", START_LINE_FOLLOW_MSG_ID, count, base_velocity))
+
+    def start_turn(self, left_out: float, right_out: float, mode: int, base_velocity: float) -> None:
+        self.stcp.write(struct.pack("<BBfff", START_LF_TURN_MSG_ID, mode, base_velocity, left_out, right_out))
+
+    def start_180_turn(self, left_out: float, right_out: float, mode: int, base_velocity: float, rev_velocity: float, post_turn_left: float, post_turn_right: float) -> None:
+        self.stcp.write(struct.pack("<BBffffff", START_180_TURN_MSG_ID, mode, base_velocity, left_out, right_out, rev_velocity, post_turn_left, post_turn_right))
 
     def get_property(self, pid, ptype):
         self.sp.reset_input_buffer()
