@@ -205,7 +205,7 @@ class ZumoTarget(Target):
 
         return {"timestamps": ctl_times, "left_percent_out": left_outs, "right_percent_out": right_outs, "errors": errors, "actual": actuals, "sp_times": sp_times, "setpoints": setpoints}
 
-    def dispatch(self, bay: int, aisle: int) -> None:
+    def dispatch(self, aisle: int, bay: int) -> None:
         self.stcp.write(struct.pack("<BBB", DISPATCH_MSG_ID, aisle, bay))
 
     def start_line_follow(self, count: int, base_velocity: float) -> None:
