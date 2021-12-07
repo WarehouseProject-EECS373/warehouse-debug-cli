@@ -64,6 +64,7 @@ class AO_ID(IntEnum):
     STATE = 0x4,
     REFARR = 0x5,
     TEST = 0x6,
+    ELECTROMAGNET = 0x7,
 
 class MSG_ID(IntEnum):
     DATA_MSG_ID = 0x0,
@@ -95,6 +96,8 @@ class MSG_ID(IntEnum):
     SM_CALIBRATE_DONE = 0x120,
     GET_PROPERTY = 0x220,
     SET_PROPERTY = 0x221,
+    EM_ENABLE = 0x400,
+    EN_DISABLE = 0x401
 
 class DriveCtlInitPacket:
     def __init__(self, sp, timestamp):
